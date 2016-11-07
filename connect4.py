@@ -1,22 +1,25 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import re
 import sys
-import heapq
+import copy
 import argparse
 import numpy as np
 
 
 class Jogo(object):
     
-    def __init__(self):
+    def __init__(self, niveis, debug):
         self.tabuleiro = Tabuleiro()
         self.vencedor = 0 # -1: jogador humano, 1: jogador ia
         self.turno_ia = False # começa com o jogador humano
+        self.niveis = niveis
+        self.debug = debug
         
     def reiniciar(self):
-        self.__init__()
+        self.tabuleiro = Tabuleiro()
+        self.vencedor = 0
+        self.turno_ia = False
         self.iniciar()
     
     def iniciar(self):
@@ -52,15 +55,15 @@ class Jogo(object):
             else:
                 print '\nA partida acabou empatada.'
             
-            raw_input('\nPressione enter para inicar um novo jogo...')
+            raw_input('\nPressione enter para iniciar um novo jogo...')
             self.reiniciar()
             
     def encerrado(self):
         return self.vencedor != 0 or self.tabuleiro.cheio()
     
     def realizar_jogada(self):
-        coluna = np.random.choice(np.where(self.tabuleiro.estado[0,:] == 0)[0])
-        self.tabuleiro.realizar_jogada(coluna, True)
+        colunas, _, _ = Minimax(self.niveis, self.debug).executar(self.tabuleiro)
+        self.tabuleiro.realizar_jogada(colunas[0], True)
     
     def mostrar_tabuleiro(self):
         print ''
@@ -95,43 +98,41 @@ class Avaliacao(object):
         self.tabuleiro = tabuleiro
         self.resultado = self.avaliar(jogador_ia)
         self.vencedor = 0
-        if self.resultado > self.PESOS[3]:
+        if self.resultado > self.PESOS[3] - self.PESOS[2]*7:
             self.vencedor = 1 if jogador_ia else -1
-        
+
+
+    def contar_ameacas(self, jogador, adversario, ameacas, quadrupla):
+        if adversario not in quadrupla:
+            index_ameaca = int(np.sum(quadrupla == jogador)) - 1
+            if index_ameaca >= 0:
+                ameacas[index_ameaca] += 1
+        elif jogador not in quadrupla:
+            index_ameaca = int(np.sum(quadrupla == adversario)) - 1
+            if index_ameaca >= 0:
+                ameacas[index_ameaca] -= 1
+
     def avaliar(self, jogador_ia=True):
         adversario = -1 if jogador_ia else 1
+        jogador = -adversario
         ameacas = np.zeros(4)
+        
         for i in xrange(3):
             for j in xrange(4):
                 
                 window = self.tabuleiro.estado[i:i+4, j:j+4]
+                diagonal_principal = window.diagonal()
+                diagonal_secundaria = np.fliplr(window).diagonal()
+                
+                self.contar_ameacas(jogador, adversario, ameacas, diagonal_principal)
+                self.contar_ameacas(jogador, adversario, ameacas, diagonal_secundaria)
                 
                 for k in xrange(4):
                     linha = window[k,:]
                     coluna = window[:,k]
-                    diagonal_principal = window.diagonal()
-                    diagonal_secundaria = np.fliplr(window).diagonal()
+                    self.contar_ameacas(jogador, adversario, ameacas, linha)
+                    self.contar_ameacas(jogador, adversario, ameacas, coluna)
                     
-                    if adversario not in linha:
-                        index_ameaca = int(np.sum(linha == -adversario)) - 1
-                        if index_ameaca >= 0:
-                            ameacas[index_ameaca] += 1
-                    
-                    if adversario not in coluna:
-                        index_ameaca = int(np.sum(coluna == -adversario)) - 1
-                        if index_ameaca >= 0:
-                            ameacas[index_ameaca] += 1
-                    
-                if adversario not in diagonal_principal:
-                    index_ameaca = int(np.sum(diagonal_principal == -adversario)) - 1
-                    if index_ameaca >= 0:
-                        ameacas[index_ameaca] += 1
-                        
-                if adversario not in diagonal_secundaria:
-                    index_ameaca = int(np.sum(diagonal_secundaria == -adversario)) - 1
-                    if index_ameaca >= 0:
-                        ameacas[index_ameaca] += 1
-        
         return np.sum(ameacas * self.PESOS)
         
 
@@ -155,14 +156,84 @@ class Tabuleiro(object):
         return coluna is not None and coluna >= 0 and coluna <= 6 and self.estado[0, coluna] == 0
     
     def cheio(self):
-        return self.estado[0,:].all() 
+        return self.estado[0,:].all()
+    
+    def copia(self):
+        t = Tabuleiro()
+        t.estado = self.estado.copy()
+        return t
+        
+        
+class Minimax(object):
+    
+    def __init__(self, niveis=2, debug=False):
+        self.niveis = niveis
+        self.debug = debug
+    
+    def executar(self, tabuleiro, alpha=float("-inf"), beta=float("inf"), jogador_ia=True, colunas=[], nivel=0):
+        if nivel == 0:
+            avaliacao = Avaliacao(tabuleiro, jogador_ia=jogador_ia)
+        else:
+            avaliacao = Avaliacao(tabuleiro, jogador_ia=True)
+        
+        if nivel == self.niveis or avaliacao.vencedor != 0:
+            return copy.copy(colunas), tabuleiro, avaliacao.resultado / float(nivel+1)
+        
+        jogadas = self.gerar_jogadas(tabuleiro, jogador_ia)
+        
+        c, t = colunas, tabuleiro
+        if jogador_ia:
+            for col, tab in jogadas:
+                cols = copy.copy(colunas) + [col]
+                cs, tb, score = self.executar(tab, alpha, beta, not jogador_ia, cols, nivel=nivel+1)
+                if self.debug: print 'MAX:', cs, score
+                # score = score if self.niveis % 2 != 0 else -score
+                if score > alpha: 
+                    alpha = score
+                    c = cs
+                    t = tb
+                if alpha >= beta:
+                    if self.debug: print 'PODOU MAX (alpha, beta):', alpha, beta
+                    break
+            
+            if self.debug: print 'ESCOLHIDO MAX:', c, alpha
+            return c, t, alpha
+        else:
+            for col, tab in jogadas:
+                cols = copy.copy(colunas) + [col]
+                cs, tb, score = self.executar(tab, alpha, beta, not jogador_ia, cols, nivel=nivel+1)
+                if self.debug: print 'MIN:', cs, score
+                # score = score if self.niveis % 2 != 0 else -score
+                if score < beta: 
+                    beta = score
+                    c = cs
+                    t = tb
+                if alpha >= beta: 
+                    if self.debug: print 'PODOU MIN (alpha, beta):', alpha, beta
+                    break
+            
+            if self.debug: print 'ESCOLHIDO MIN:', c, beta
+            return c, t, beta
+        
+        
+    def gerar_jogadas(self, tabuleiro, jogador_ia=True):
+        colunas = np.where(tabuleiro.estado[0,:] == 0)[0]
+        jogadas = []
+        for i in xrange(len(colunas)):
+            t = tabuleiro.copia()
+            t.realizar_jogada(colunas[i], jogador_ia=jogador_ia)
+            jogadas.append((colunas[i], t))
+            
+        return jogadas
         
 
 if __name__ == '__main__':
     try:
         parser = argparse.ArgumentParser()
+        parser.add_argument('-n', '--niveis' , nargs='?', default=2, type=int)
+        parser.add_argument('-d', '--debug', action='store_true', default=False)
         args = parser.parse_args()
-        Jogo().iniciar()
+        Jogo(niveis=args.niveis, debug=args.debug).iniciar()
     except KeyboardInterrupt:
         print "\nSaindo..."
         sys.exit(0)
