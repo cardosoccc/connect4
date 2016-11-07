@@ -9,12 +9,13 @@ import numpy as np
 
 class Jogo(object):
     
-    def __init__(self, niveis, debug):
+    def __init__(self, niveis=2, debug=False, demo=False):
         self.tabuleiro = Tabuleiro()
         self.vencedor = 0 # -1: jogador humano, 1: jogador ia
         self.turno_ia = False # começa com o jogador humano
         self.niveis = niveis
         self.debug = debug
+        self.demo = demo
         
     def reiniciar(self):
         self.tabuleiro = Tabuleiro()
@@ -31,7 +32,11 @@ class Jogo(object):
                 self.receber_jogada()
             
             self.avaliar_vencedor(Avaliacao(self.tabuleiro, jogador_ia=self.turno_ia))
+            if self.turno_ia and self.demo: 
+                self.mostrar_tabuleiro()
+                break
             self.turno_ia = not self.turno_ia
+
                 
     def receber_jogada(self):
         self.mostrar_tabuleiro()
