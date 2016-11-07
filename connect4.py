@@ -94,7 +94,8 @@ class Avaliacao(object):
     
     PESOS = np.array([1, 50, 5000, 500000])
     
-    def __init__(self, tabuleiro, jogador_ia=True):
+    def __init__(self, tabuleiro, jogador_ia=True, ultimo_nivel_impar=False):
+        self.ultimo_nivel_impar = ultimo_nivel_impar
         self.tabuleiro = tabuleiro
         self.resultado = self.avaliar(jogador_ia)
         self.vencedor = 0
@@ -110,6 +111,8 @@ class Avaliacao(object):
         elif jogador not in quadrupla:
             index_ameaca = int(np.sum(quadrupla == adversario)) - 1
             if index_ameaca >= 0:
+                index_ameaca += 1 if self.ultimo_nivel_impar else 0
+                index_ameaca = min(index_ameaca, 3)
                 ameacas[index_ameaca] -= 1
 
     def avaliar(self, jogador_ia=True):
@@ -174,10 +177,11 @@ class Minimax(object):
         if nivel == 0:
             avaliacao = Avaliacao(tabuleiro, jogador_ia=jogador_ia)
         else:
-            avaliacao = Avaliacao(tabuleiro, jogador_ia=True)
+            avaliacao = Avaliacao(tabuleiro, jogador_ia=True, ultimo_nivel_impar=nivel==self.niveis and nivel % 2 != 0)
         
         if nivel == self.niveis or avaliacao.vencedor != 0:
             return copy.copy(colunas), tabuleiro, avaliacao.resultado / float(nivel+1)
+
         
         jogadas = self.gerar_jogadas(tabuleiro, jogador_ia)
         
@@ -186,33 +190,31 @@ class Minimax(object):
             for col, tab in jogadas:
                 cols = copy.copy(colunas) + [col]
                 cs, tb, score = self.executar(tab, alpha, beta, not jogador_ia, cols, nivel=nivel+1)
-                if self.debug: print 'MAX:', cs, score
-                # score = score if self.niveis % 2 != 0 else -score
+                if self.debug: print ' ' * nivel, 'MAX:', cs, '\n', ' ' * nivel, tb.estado, score
                 if score > alpha: 
                     alpha = score
                     c = cs
                     t = tb
                 if alpha >= beta:
-                    if self.debug: print 'PODOU MAX (alpha, beta):', alpha, beta
+                    if self.debug: print ' ' * nivel, 'PODOU MAX (alpha, beta):', alpha, beta
                     break
             
-            if self.debug: print 'ESCOLHIDO MAX:', c, alpha
+            if self.debug: print ' ' * nivel, 'ESCOLHIDO MAX:', c, '\n', ' ' * nivel, t.estado, alpha
             return c, t, alpha
         else:
             for col, tab in jogadas:
                 cols = copy.copy(colunas) + [col]
                 cs, tb, score = self.executar(tab, alpha, beta, not jogador_ia, cols, nivel=nivel+1)
-                if self.debug: print 'MIN:', cs, score
-                # score = score if self.niveis % 2 != 0 else -score
+                if self.debug: print' ' * nivel,  'MIN:', cs, '\n', ' ' * nivel, tb.estado, score
                 if score < beta: 
                     beta = score
                     c = cs
                     t = tb
                 if alpha >= beta: 
-                    if self.debug: print 'PODOU MIN (alpha, beta):', alpha, beta
+                    if self.debug: print ' ' * nivel, 'PODOU MIN (alpha, beta):', alpha, beta
                     break
             
-            if self.debug: print 'ESCOLHIDO MIN:', c, beta
+            if self.debug: print ' ' * nivel, 'ESCOLHIDO MIN:', c, '\n', ' ' * nivel, t.estado, beta
             return c, t, beta
         
         
